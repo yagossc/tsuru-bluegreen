@@ -157,7 +157,18 @@ class BlueGreen:
     if response.status != 200:
       for i in range(self.retry_times):
 
-        response.read() # This acts as a flush (necessary)
+        app_request = self.get("/apps/{}".format(app))
+        app_info = json.loads(app_request.read())
+        lock_info = (app_info.get("lock"))
+        print "  %s" % lock_info
+        locked = lock_info.get("Locked")
+
+        if locked:
+          print "  App is LOCKED"
+
+        data = response.read() # This acts as a flush (necessary)
+        print "RESPONSE: %s %s" % (response.status, response.reason)
+        print "DATA: %s" % (data)
         print """
     Error removing '%s' units from %s. Retrying %d...""" % (process_name, app, i+1)
 
@@ -170,8 +181,8 @@ class BlueGreen:
         Successfully removed '%s' unit from %s""" % (process_name, app)
           return True
 
-      # We're all out of patience here, so we'll force an unlock
-      # to try to remove the stuck unit
+      # We're all out of patience here, so we'll to force
+      # an app unlock to remove the stuck unit
       if self.unlock_app(app):
         print """
         Successfully unlocked app '%s'...""" % (app)
