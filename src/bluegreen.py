@@ -155,22 +155,22 @@ class BlueGreen:
     response = conn.getresponse()
 
     if response.status != 200:
-      for i in range(self.retry_times):
-
-        app_request = self.get("/apps/{}".format(app))
-        app_info = json.loads(app_request.read())
-        lock_info = (app_info.get("lock"))
-        print "  %s" % lock_info
-        locked = lock_info.get("Locked")
-
-        if locked:
-          print "  App is LOCKED"
-
-        data = response.read() # This acts as a flush (necessary)
-        print "RESPONSE: %s %s" % (response.status, response.reason)
-        print "DATA: %s" % (data)
+      response.read() # Flush buffer
+      # curl -v 'https://tsuru.globoi.com/events?target.value=app-name&running=true' \
+      #   -H "Authorization: $(cat ~/.tsuru/token.d/default)"
+      conn.request("GET", "/events?target.value=" + app + "&running=true", '', headers)
+      response = conn.getresponse()
+      if response.status == 200:
+        # data = response.read()
+        # print "RESPONSE: %s %s" % (response.status, response.reason)
+        # print "DATA: %s" % (data)
         print """
-    Error removing '%s' units from %s. Retrying %d...""" % (process_name, app, i+1)
+    There's a running event for this app. Wait for the plugin's configured removal retries."""
+
+      for i in range(1, self.retry_times+1):
+        response.read() # This acts as a flush (necessary)
+        print """
+    Error removing '%s' units from %s. Retrying %d...""" % (process_name, app, i)
 
         time.sleep(self.retry_sleep)
         conn.request("DELETE", "/apps/" + app + '/units?units=' + str(units_to_remove) + '&process=' + process_name, '', headers)
@@ -181,28 +181,70 @@ class BlueGreen:
         Successfully removed '%s' unit from %s""" % (process_name, app)
           return True
 
-      # We're all out of patience here, so we'll to force
-      # an app unlock to remove the stuck unit
-      if self.unlock_app(app):
-        print """
-        Successfully unlocked app '%s'...""" % (app)
-
-        response.read() # This acts as a flush (necessary)
-        conn.request("DELETE", "/apps/" + app + '/units?units=' + str(units_to_remove) + '&process=' + process_name, '', headers)
-        response = conn.getresponse()
-
-        if response.status == 200:
-          print """
-        Successfully removed '%s' unit from %s""" % (process_name, app)
-          return True
-
       print """
-      Error unlocking '%s'...""" % (app)
-      print """
-      Error removing '%s' units from %s in %d tries. Please, remove it manually.""" % (process_name, app, i+1)
+      Error removing '%s' units from %s in %d tries. Please, remove it manually.""" % (process_name, app, i)
       return False
     else:
       return True
+
+  # def remove_units_per_process_type(self, app, units_to_remove, process_name):
+  #   print """
+  # Removing %s '%s' units from %s ...""" % (units_to_remove, process_name, app)
+
+  #   headers = {"Authorization" : "bearer " + self.token}
+  #   conn = create_connection(self.target)
+  #   conn.request("DELETE", "/apps/" + app + '/units?units=' + str(units_to_remove) + '&process=' + process_name, '', headers)
+  #   response = conn.getresponse()
+
+  #   if response.status != 200:
+  #     for i in range(self.retry_times):
+
+  #       app_request = self.get("/apps/{}".format(app))
+  #       app_info = json.loads(app_request.read())
+  #       lock_info = (app_info.get("lock"))
+  #       print "  %s" % lock_info
+  #       locked = lock_info.get("Locked")
+
+  #       if locked:
+  #         print "  App is LOCKED"
+
+  #       data = response.read() # This acts as a flush (necessary)
+  #       print "RESPONSE: %s %s" % (response.status, response.reason)
+  #       print "DATA: %s" % (data)
+  #       print """
+  #   Error removing '%s' units from %s. Retrying %d...""" % (process_name, app, i+1)
+
+  #       time.sleep(self.retry_sleep)
+  #       conn.request("DELETE", "/apps/" + app + '/units?units=' + str(units_to_remove) + '&process=' + process_name, '', headers)
+  #       response = conn.getresponse()
+
+  #       if response.status == 200:
+  #         print """
+  #       Successfully removed '%s' unit from %s""" % (process_name, app)
+  #         return True
+
+  #     # We're all out of patience here, so we'll to force
+  #     # an app unlock to remove the stuck unit
+  #     if self.unlock_app(app):
+  #       print """
+  #       Successfully unlocked app '%s'...""" % (app)
+
+  #       response.read() # This acts as a flush (necessary)
+  #       conn.request("DELETE", "/apps/" + app + '/units?units=' + str(units_to_remove) + '&process=' + process_name, '', headers)
+  #       response = conn.getresponse()
+
+  #       if response.status == 200:
+  #         print """
+  #       Successfully removed '%s' unit from %s""" % (process_name, app)
+  #         return True
+
+  #     print """
+  #     Error unlocking '%s'...""" % (app)
+  #     print """
+  #     Error removing '%s' units from %s in %d tries. Please, remove it manually.""" % (process_name, app, i+1)
+  #     return False
+  #   else:
+  #     return True
 
   def add_units(self, app, total_units_after_add):
     total_units = self.total_units(app)
